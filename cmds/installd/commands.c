@@ -1,16 +1,16 @@
 /*
 ** Copyright 2008, The Android Open Source Project
 **
-** Licensed under the Apache License, Version 2.0 (the "License"); 
-** you may not use this file except in compliance with the License. 
-** You may obtain a copy of the License at 
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
 **
-**     http://www.apache.org/licenses/LICENSE-2.0 
+**     http://www.apache.org/licenses/LICENSE-2.0
 **
-** Unless required by applicable law or agreed to in writing, software 
-** distributed under the License is distributed on an "AS IS" BASIS, 
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-** See the License for the specific language governing permissions and 
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
 
@@ -558,9 +558,9 @@ int create_cache_path(char path[PKG_PATH_MAX], const char *src)
         return -1;
     }
 
-    dstlen = srclen + strlen(DALVIK_CACHE_PREFIX) + 
+    dstlen = srclen + strlen(DALVIK_CACHE_PREFIX) +
         strlen(DALVIK_CACHE_POSTFIX) + 1;
-    
+
     if (dstlen > PKG_PATH_MAX) {
         return -1;
     }
@@ -569,7 +569,7 @@ int create_cache_path(char path[PKG_PATH_MAX], const char *src)
             DALVIK_CACHE_PREFIX,
             src + 1, /* skip the leading / */
             DALVIK_CACHE_POSTFIX);
-    
+
     for(tmp = path + strlen(DALVIK_CACHE_PREFIX); *tmp; tmp++) {
         if (*tmp == '/') {
             *tmp = '@';
@@ -800,12 +800,12 @@ int movefileordir(char* srcpath, char* dstpath, int dstbasepos,
 
     int srcend = strlen(srcpath);
     int dstend = strlen(dstpath);
-    
+
     if (lstat(srcpath, statbuf) < 0) {
         ALOGW("Unable to stat %s: %s\n", srcpath, strerror(errno));
         return 1;
     }
-    
+
     if ((statbuf->st_mode&S_IFDIR) == 0) {
         mkinnerdirs(dstpath, dstbasepos, S_IRWXU|S_IRWXG|S_IXOTH,
                 dstuid, dstgid, statbuf);
@@ -831,7 +831,7 @@ int movefileordir(char* srcpath, char* dstpath, int dstbasepos,
     }
 
     res = 0;
-    
+
     while ((de = readdir(d))) {
         const char *name = de->d_name;
             /* always skip "." and ".." */
@@ -839,32 +839,32 @@ int movefileordir(char* srcpath, char* dstpath, int dstbasepos,
             if (name[1] == 0) continue;
             if ((name[1] == '.') && (name[2] == 0)) continue;
         }
-        
+
         if ((srcend+strlen(name)) >= (PKG_PATH_MAX-2)) {
             ALOGW("Source path too long; skipping: %s/%s\n", srcpath, name);
             continue;
         }
-        
+
         if ((dstend+strlen(name)) >= (PKG_PATH_MAX-2)) {
             ALOGW("Destination path too long; skipping: %s/%s\n", dstpath, name);
             continue;
         }
-        
+
         srcpath[srcend] = dstpath[dstend] = '/';
         strcpy(srcpath+srcend+1, name);
         strcpy(dstpath+dstend+1, name);
-        
+
         if (movefileordir(srcpath, dstpath, dstbasepos, dstuid, dstgid, statbuf) != 0) {
             res = 1;
         }
-        
+
         // Note: we will be leaving empty directories behind in srcpath,
         // but that is okay, the package manager will be erasing all of the
         // data associated with .apks that disappear.
-        
+
         srcpath[srcend] = dstpath[dstend] = 0;
     }
-    
+
     closedir(d);
     return res;
 }
@@ -906,7 +906,7 @@ int movefiles()
                         UPDATE_COMMANDS_DIR_PREFIX, name);
                 continue;
             }
-            
+
             bufp = 0;
             bufe = 0;
             buf[PKG_PATH_MAX] = 0;
@@ -1230,7 +1230,8 @@ fail:
     return -1;
 }
 
-static void run_aapt(const char *source_apk, const char *internal_path, int restable_fd, int resapk_fd, int pkgId)
+static void run_aapt(const char *source_apk, const char *internal_path, int restable_fd,
+                     int resapk_fd, int pkgId, const char *common_res_path)
 {
     static const char *AAPT_BIN = "/system/bin/aapt";
     static const char *MANIFEST = "/data/app/AndroidManifest.xml";
@@ -1244,8 +1245,21 @@ static void run_aapt(const char *source_apk, const char *internal_path, int rest
     snprintf(restable_str, sizeof(restable_str), "%d", restable_fd);
     snprintf(resapk_str, sizeof(resapk_str), "%d", resapk_fd);
     snprintf(pkgId_str, sizeof(pkgId_str), "%d", pkgId);
+    bool hasCommonResources = (common_res_path != NULL && common_res_path[0] != '\0');
 
-    execl(AAPT_BIN, AAPT_BIN, "package",
+    if (hasCommonResources) {
+        execl(AAPT_BIN, AAPT_BIN, "package",
+                              "-M", MANIFEST,
+                              "-S", source_apk,
+                              "-X", internal_path,
+                              "-R", restable_str,
+                              "-I", FRAMEWORK_RES,
+                              "-I", common_res_path,
+                              "-r", resapk_str,
+                              "-x", pkgId_str,
+                              (char*)NULL);
+    } else {
+        execl(AAPT_BIN, AAPT_BIN, "package",
                               "-M", MANIFEST,
                               "-S", source_apk,
                               "-X", internal_path,
@@ -1254,13 +1268,18 @@ static void run_aapt(const char *source_apk, const char *internal_path, int rest
                               "-r", resapk_str,
                               "-x", pkgId_str,
                               (char*)NULL);
+    }
     ALOGE("execl(%s) failed: %s\n", AAPT_BIN, strerror(errno));
 }
 
-int aapt(const char *source_apk, const char *internal_path, const char *out_restable, uid_t uid, int pkgId)
+int aapt(const char *source_apk, const char *internal_path, const char *out_restable, uid_t uid,
+         int pkgId, const char *common_res_path)
 {
-    ALOGD("aapt source_apk=%s internal_path=%s out_restable=%s uid=%d, pkgId=%d\n",
-             source_apk, internal_path, out_restable, uid, pkgId);
+    ALOGD("aapt source_apk=%s internal_path=%s out_restable=%s uid=%d, pkgId=%d, common_res_path=%s",
+             source_apk, internal_path, out_restable, uid, pkgId, common_res_path);
+    static const int PARENT_READ_PIPE = 0;
+    static const int CHILD_WRITE_PIPE = 1;
+
     int restable_fd = -1;
     int resapk_fd = -1;
     char restable_path[PATH_MAX];
@@ -1323,7 +1342,7 @@ int aapt(const char *source_apk, const char *internal_path, const char *out_rest
             exit(1);
         }
 
-        run_aapt(source_apk, internal_path, restable_fd, resapk_fd, pkgId);
+        run_aapt(source_apk, internal_path, restable_fd, resapk_fd, pkgId, common_res_path);
         exit(1); /* only if exec call to idmap failed */
     } else {
         int status = wait_child(pid);
